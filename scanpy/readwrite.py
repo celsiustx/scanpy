@@ -19,6 +19,8 @@ from anndata import (
     read_hdf,
 )
 from anndata import read as read_h5ad
+import dask
+from dask import delayed
 
 from ._settings import settings
 from ._compat import Literal
@@ -136,7 +138,7 @@ def read(
 
 
 def read_10x_h5(
-    filename: Union[str, Path], genome: Optional[str] = None, gex_only: bool = True,
+    filename: Union[str, Path], genome: Optional[str] = None, gex_only: bool = True, dask: bool = False
 ) -> AnnData:
     """\
     Read 10x-Genomics-formatted hdf5 file.
@@ -172,7 +174,7 @@ def read_10x_h5(
     with tables.open_file(str(filename), 'r') as f:
         v3 = '/matrix' in f
     if v3:
-        adata = _read_v3_10x_h5(filename, start=start)
+        adata = _read_v3_10x_h5(filename, start=start, dask=dask)
         if genome:
             if genome not in adata.var['genome'].values:
                 raise ValueError(
@@ -188,11 +190,11 @@ def read_10x_h5(
         if adata.is_view:
             adata = adata.copy()
     else:
-        adata = _read_legacy_10x_h5(filename, genome=genome, start=start)
+        adata = _read_legacy_10x_h5(filename, genome=genome, start=start, dask=dask)
     return adata
 
 
-def _read_legacy_10x_h5(filename, *, genome=None, start=None):
+def _read_legacy_10x_h5(filename, *, genome=None, start=None, dask:bool=False):
     """
     Read hdf5 file from Cell Ranger v2 or earlier versions.
     """
@@ -243,7 +245,15 @@ def _read_legacy_10x_h5(filename, *, genome=None, start=None):
             raise Exception('File is missing one or more required datasets.')
 
 
-def _read_v3_10x_h5(filename, *, start=None):
+def read_node(node, dask:bool = False):
+    if dask:
+        from dask import array as da
+        return da.array(node)
+    else:
+        return node.read()
+
+
+def _read_v3_10x_h5(filename, *, start=None, dask:bool=False):
     """
     Read hdf5 file from Cell Ranger v3 or later versions.
     """
@@ -251,17 +261,29 @@ def _read_v3_10x_h5(filename, *, start=None):
         try:
             dsets = {}
             for node in f.walk_nodes('/matrix', 'Array'):
-                dsets[node.name] = node.read()
+                dsets[node.name] = read_node(node, dask)
             from scipy.sparse import csr_matrix
 
             M, N = dsets['shape']
-            data = dsets['data']
+
             if dsets['data'].dtype == np.dtype('int32'):
-                data = dsets['data'].view('float32')
-                data[:] = dsets['data']
-            matrix = csr_matrix(
-                (data, dsets['indices'], dsets['indptr']), shape=(N, M),
-            )
+                if dask:
+                    data = delayed(float)(dsets['data'])
+                else:
+                    data = dsets['data'].view('float32')
+                    data[:] = dsets['data']
+            else:
+                data = dsets['data']
+
+            if dask:
+                matrix = delayed(csr_matrix)(
+                    (data, dsets['indices'], dsets['indptr']), shape=(N, M),
+                )
+            else:
+                matrix = csr_matrix(
+                    (data, dsets['indices'], dsets['indptr']), shape=(N, M),
+                )
+
             adata = AnnData(
                 matrix,
                 dict(obs_names=dsets['barcodes'].astype(str)),
