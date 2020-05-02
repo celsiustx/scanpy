@@ -246,6 +246,9 @@ def _read_legacy_10x_h5(filename, *, genome=None, start=None, dask:bool=False):
 
 
 def read_node(node, dask:bool = False):
+    """
+    Encapsulate dask vs standard node construction.
+    """
     if dask:
         from dask import array as da
         return da.array(node)
