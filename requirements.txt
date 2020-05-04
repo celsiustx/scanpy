@@ -20,3 +20,12 @@ umap-learn>=0.3.10
 legacy-api-wrap
 setuptools_scm
 packaging
+
+-e dask
+-e anndata/dask dask[dataframe]
+-e anndata/dask dask[array]
+-e dask[dataframe] anndata/dask
+-e dask[array] anndata/dask
+
+-e anndata
+

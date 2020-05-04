@@ -1,3 +1,4 @@
+import os
 import sys
 
 if sys.version_info < (3, 6):
@@ -12,6 +13,9 @@ try:
 except ImportError:  # Deps not yet installed
     __author__ = __email__ = ''
 
+# Handle the submodule "anndata".
+sys.path.append(os.path.join(os.path.dirname(__file__), 'anndata'))
+
 setup(
     name='scanpy',
     use_scm_version=True,
@@ -23,9 +27,13 @@ setup(
     author_email=__email__,
     license='BSD',
     python_requires='>=3.6',
+    dependency_links=[
+        "git@github.com:celsiustx/anndata@ctx#egg=anndata"
+    ],
     install_requires=[
         l.strip() for l in Path('requirements.txt').read_text('utf-8').splitlines()
-    ],
+        if not l.startswith("-e")
+    ] + ["anndata", "dask[dataframe]", "dask[array]"],
     extras_require=dict(
         louvain=['python-igraph', 'louvain>=0.6'],
         leiden=['python-igraph', 'leidenalg'],
