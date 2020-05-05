@@ -19,8 +19,6 @@ from anndata import (
     read_hdf,
 )
 from anndata import read as read_h5ad
-import dask
-from dask import delayed
 
 from ._settings import settings
 from ._compat import Literal
@@ -138,7 +136,7 @@ def read(
 
 
 def read_10x_h5(
-    filename: Union[str, Path], genome: Optional[str] = None, gex_only: bool = True, dask: bool = False
+    filename: Union[str, Path], genome: Optional[str] = None, gex_only: bool = True, dask: bool = False,
 ) -> AnnData:
     """\
     Read 10x-Genomics-formatted hdf5 file.
@@ -194,7 +192,7 @@ def read_10x_h5(
     return adata
 
 
-def _read_legacy_10x_h5(filename, *, genome=None, start=None, dask:bool=False):
+def _read_legacy_10x_h5(filename, *, genome=None, start=None, dask: bool = False):
     """
     Read hdf5 file from Cell Ranger v2 or earlier versions.
     """
@@ -245,58 +243,51 @@ def _read_legacy_10x_h5(filename, *, genome=None, start=None, dask:bool=False):
             raise Exception('File is missing one or more required datasets.')
 
 
-def read_node(node, dask:bool = False):
-    """
-    Encapsulate dask vs standard node construction.
-    """
-    if dask:
-        from dask import array as da
-        return da.array(node)
-    else:
-        return node.read()
-
-
-def _read_v3_10x_h5(filename, *, start=None, dask:bool=False):
+def _read_v3_10x_h5(filename, *, start=None, dask: bool = False):
     """
     Read hdf5 file from Cell Ranger v3 or later versions.
     """
     with tables.open_file(str(filename), 'r') as f:
+        root = f.root
+        matrix = root['matrix']
+        N, M = matrix['shape']
+        shape = (M, N)
         try:
-            dsets = {}
-            for node in f.walk_nodes('/matrix', 'Array'):
-                dsets[node.name] = read_node(node, dask)
-            from scipy.sparse import csr_matrix
+            if dask:
+                from anndata._io.dask.hdf5.load_array import load_dask_array
+                X = load_dask_array(path=filename, key='matrix', format_str='csc', shape=shape)
 
-            M, N = dsets['shape']
+                from anndata._io.dask.hdf5.load_dataframe import load_dask_dataframe
+                obs = load_dask_dataframe(path=filename, key='matrix', columns=['barcodes'])
 
-            if dsets['data'].dtype == np.dtype('int32'):
-                if dask:
-                    data = delayed(float)(dsets['data'])
-                else:
-                    data = dsets['data'].view('float32')
-                    data[:] = dsets['data']
+                var_cols = ['id','name','genome','feature_type']
+                var = load_dask_dataframe(path=filename, key='matrix/features', columns=var_cols)
+                var = var.rename(columns={'feature_type':'feature_types'})
+                for k in var.columns:
+                    var[k] = var[k].str.decode('utf-8')
             else:
+                dsets = {}
+                for node in f.walk_nodes('/matrix', 'Array'):
+                    dsets[node.name] = node.read()
+
                 data = dsets['data']
 
-            if dask:
-                matrix = delayed(csr_matrix)(
-                    (data, dsets['indices'], dsets['indptr']), shape=(N, M),
-                )
-            else:
-                matrix = csr_matrix(
-                    (data, dsets['indices'], dsets['indptr']), shape=(N, M),
-                )
+                if dsets['data'].dtype == np.dtype('int32'):
+                    data = dsets['data'].view('float32')
+                    data[:] = dsets['data']
 
-            adata = AnnData(
-                matrix,
-                dict(obs_names=dsets['barcodes'].astype(str)),
-                dict(
+                from scipy.sparse import csr_matrix
+                X = csr_matrix(
+                    (data, dsets['indices'], dsets['indptr']), shape=shape,
+                )
+                obs = dict(obs_names=dsets['barcodes'].astype(str))
+                var = dict(
                     var_names=dsets['name'].astype(str),
                     gene_ids=dsets['id'].astype(str),
                     feature_types=dsets['feature_type'].astype(str),
                     genome=dsets['genome'].astype(str),
-                ),
-            )
+                )
+            adata = AnnData(X, obs, var, dask=dask,)
             logg.info('', time=start)
             return adata
         except KeyError:
