@@ -105,7 +105,7 @@ def test_10x_h5_gex():
     )
 
 # Pending getting a replacement test file.
-@pytes.flag.skip
+@pytest.mark.skip
 def test_read_10x_h5_dask():
     #path = '/Users/ryan/c/celsius/data/moredata/CID003069-1.h5ad'
     path = ROOT / '../visium_data/1.0.0/filtered_feature_bc_matrix.h5'
