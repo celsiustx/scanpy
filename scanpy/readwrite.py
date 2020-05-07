@@ -136,7 +136,7 @@ def read(
 
 
 def read_10x_h5(
-    filename: Union[str, Path], genome: Optional[str] = None, gex_only: bool = True, dask: bool = False,
+    filename: Union[str, Path], genome: Optional[str] = None, gex_only: bool = True, dask: bool = False
 ) -> AnnData:
     """\
     Read 10x-Genomics-formatted hdf5 file.
