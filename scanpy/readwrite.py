@@ -183,7 +183,8 @@ def read_10x_h5(
         if gex_only:
             gx = adata.var['feature_types'].map(lambda x: x == 'Gene Expression')
             adata = adata[:, gx]
-        if adata.is_view:
+        if adata.is_view and not adata._dask:
+            # TODO: Ensure we can really skip the copy here.
             adata = adata.copy()
     else:
         adata = _read_legacy_10x_h5(filename, genome=genome, start=start, dask=dask)
