@@ -104,9 +104,11 @@ def test_10x_h5_gex():
         sc.read_10x_h5(h5_pth, gex_only=True), sc.read_10x_h5(h5_pth, gex_only=False)
     )
 
-
+# Pending getting a replacement test file.
+@pytes.flag.skip
 def test_read_10x_h5_dask():
-    path = '/Users/ryan/c/celsius/data/moredata/CID003069-1.h5ad'
+    #path = '/Users/ryan/c/celsius/data/moredata/CID003069-1.h5ad'
+    path = ROOT / '../visium_data/1.0.0/filtered_feature_bc_matrix.h5'
     ad = sc.read_10x_h5(path, dask=True, gex_only=False)
     X = ad.X
     from numpy import _NoValue as NV
