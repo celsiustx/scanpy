@@ -28,7 +28,7 @@ setup(
     license='BSD',
     python_requires='>=3.6',
     dependency_links=[
-        "git@github.com:celsiustx/anndata@ctx#egg=anndata"
+        "git@github.com:celsiustx/anndata@ctx#egg=anndata-ctx"
     ],
     install_requires=[
         l.strip() for l in Path('requirements.txt').read_text('utf-8').splitlines()
