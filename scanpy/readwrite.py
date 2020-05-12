@@ -659,10 +659,10 @@ def _read(
     # read hdf5 files
     if ext in {'h5', 'h5ad'}:
         if sheet is None:
-            return read_h5ad(filename, backed=backed)
+            return read_h5ad(filename, backed=backed, **kwargs)
         else:
             logg.debug(f'reading sheet {sheet} from file {filename}')
-            return read_hdf(filename, sheet)
+            return read_hdf(filename, sheet, **kwargs)
     # read other file types
     path_cache = settings.cachedir / _slugify(filename).replace(
         '.' + ext, '.h5ad'
