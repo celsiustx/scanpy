@@ -29,7 +29,7 @@ setup(
     python_requires='>=3.6',
     install_requires=[
         l.strip() for l in Path('requirements.txt').read_text('utf-8').splitlines()
-        if not l.startswith("-e")
+        if not (l.startswith("-e") or l.startswith("#"))
     ] + ["anndata", "dask[dataframe]", "dask[array]"],
     extras_require=dict(
         louvain=['python-igraph', 'louvain>=0.6'],
