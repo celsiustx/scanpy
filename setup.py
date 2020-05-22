@@ -27,12 +27,9 @@ setup(
     author_email=__email__,
     license='BSD',
     python_requires='>=3.6',
-    dependency_links=[
-        "git@github.com:celsiustx/anndata@ctx#egg=anndata-ctx"
-    ],
     install_requires=[
         l.strip() for l in Path('requirements.txt').read_text('utf-8').splitlines()
-        if not l.startswith("-e")
+        if not (l.startswith("-e") or l.startswith("#"))
     ] + ["anndata", "dask[dataframe]", "dask[array]"],
     extras_require=dict(
         louvain=['python-igraph', 'louvain>=0.6'],
