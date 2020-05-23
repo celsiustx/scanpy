@@ -19,6 +19,7 @@ from anndata import (
     read_hdf,
 )
 from anndata import read as read_h5ad
+from anndata_dask import AnnDataDask
 
 from ._settings import settings
 from ._compat import Literal
@@ -183,7 +184,7 @@ def read_10x_h5(
         if gex_only:
             gx = adata.var['feature_types'].map(lambda x: x == 'Gene Expression')
             adata = adata[:, gx]
-        if adata.is_view and not adata._dask:
+        if adata.is_view and not dask:
             # TODO: Ensure we can really skip the copy here.
             adata = adata.copy()
     else:
@@ -286,7 +287,10 @@ def _read_v3_10x_h5(filename, *, start=None, dask: bool = False):
                     feature_types=dsets['feature_type'].astype(str),
                     genome=dsets['genome'].astype(str),
                 )
-            adata = AnnData(X, obs, var, dask=dask,)
+            if dask:
+                adata = AnnDataDask(X, obs, var)
+            else:
+                adata = AnnData(X, obs, var)
             logg.info('', time=start)
             return adata
         except KeyError:
