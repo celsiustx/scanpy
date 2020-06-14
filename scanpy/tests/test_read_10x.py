@@ -103,3 +103,18 @@ def test_10x_h5_gex():
     assert_anndata_equal(
         sc.read_10x_h5(h5_pth, gex_only=True), sc.read_10x_h5(h5_pth, gex_only=False)
     )
+
+# Pending getting a replacement test file.
+@pytest.mark.skip
+def test_read_10x_h5_dask():
+    #path = '/Users/ryan/c/celsius/data/moredata/CID003069-1.h5ad'
+    path = ROOT / '../visium_data/1.0.0/filtered_feature_bc_matrix.h5'
+    ad = sc.read_10x_h5(path, dask=True, gex_only=False)
+    X = ad.X
+    from numpy import _NoValue as NV
+    row_sums = X.sum(axis=1, keepdims=NV)
+    print(row_sums.compute(scheduler='single-threaded'))
+    A = row_sums.A
+    flattened = A.flatten()
+    print(flattened.compute())
+

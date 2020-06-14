@@ -19,6 +19,7 @@ from anndata import (
     read_hdf,
 )
 from anndata import read as read_h5ad
+from anndata_dask import AnnDataDask
 
 from ._settings import settings
 from ._compat import Literal
@@ -136,7 +137,7 @@ def read(
 
 
 def read_10x_h5(
-    filename: Union[str, Path], genome: Optional[str] = None, gex_only: bool = True,
+    filename: Union[str, Path], genome: Optional[str] = None, gex_only: bool = True, dask: bool = False
 ) -> AnnData:
     """\
     Read 10x-Genomics-formatted hdf5 file.
@@ -172,7 +173,7 @@ def read_10x_h5(
     with tables.open_file(str(filename), 'r') as f:
         v3 = '/matrix' in f
     if v3:
-        adata = _read_v3_10x_h5(filename, start=start)
+        adata = _read_v3_10x_h5(filename, start=start, dask=dask)
         if genome:
             if genome not in adata.var['genome'].values:
                 raise ValueError(
@@ -181,18 +182,17 @@ def read_10x_h5(
                 )
             adata = adata[:, list(map(lambda x: x == str(genome), adata.var['genome']))]
         if gex_only:
-            adata = adata[
-                :,
-                list(map(lambda x: x == 'Gene Expression', adata.var['feature_types'])),
-            ]
-        if adata.is_view:
+            gx = adata.var['feature_types'].map(lambda x: x == 'Gene Expression')
+            adata = adata[:, gx]
+        if adata.is_view and not dask:
+            # TODO: Ensure we can really skip the copy here.
             adata = adata.copy()
     else:
-        adata = _read_legacy_10x_h5(filename, genome=genome, start=start)
+        adata = _read_legacy_10x_h5(filename, genome=genome, start=start, dask=dask)
     return adata
 
 
-def _read_legacy_10x_h5(filename, *, genome=None, start=None):
+def _read_legacy_10x_h5(filename, *, genome=None, start=None, dask: bool = False):
     """
     Read hdf5 file from Cell Ranger v2 or earlier versions.
     """
@@ -243,35 +243,54 @@ def _read_legacy_10x_h5(filename, *, genome=None, start=None):
             raise Exception('File is missing one or more required datasets.')
 
 
-def _read_v3_10x_h5(filename, *, start=None):
+def _read_v3_10x_h5(filename, *, start=None, dask: bool = False):
     """
     Read hdf5 file from Cell Ranger v3 or later versions.
     """
     with tables.open_file(str(filename), 'r') as f:
+        root = f.root
+        matrix = root['matrix']
+        N, M = matrix['shape']
+        shape = (M, N)
         try:
-            dsets = {}
-            for node in f.walk_nodes('/matrix', 'Array'):
-                dsets[node.name] = node.read()
-            from scipy.sparse import csr_matrix
+            if dask:
+                from anndata._io.dask.hdf5.load_array import load_dask_array
+                X = load_dask_array(path=filename, key='matrix', format_str='csc', shape=shape)
 
-            M, N = dsets['shape']
-            data = dsets['data']
-            if dsets['data'].dtype == np.dtype('int32'):
-                data = dsets['data'].view('float32')
-                data[:] = dsets['data']
-            matrix = csr_matrix(
-                (data, dsets['indices'], dsets['indptr']), shape=(N, M),
-            )
-            adata = AnnData(
-                matrix,
-                dict(obs_names=dsets['barcodes'].astype(str)),
-                dict(
+                from anndata._io.dask.hdf5.load_dataframe import load_dask_dataframe
+                obs = load_dask_dataframe(path=filename, key='matrix', columns=['barcodes'])
+
+                var_cols = ['id','name','genome','feature_type']
+                var = load_dask_dataframe(path=filename, key='matrix/features', columns=var_cols)
+                var = var.rename(columns={'feature_type':'feature_types'})
+                for k in var.columns:
+                    var[k] = var[k].str.decode('utf-8')
+            else:
+                dsets = {}
+                for node in f.walk_nodes('/matrix', 'Array'):
+                    dsets[node.name] = node.read()
+
+                data = dsets['data']
+
+                if dsets['data'].dtype == np.dtype('int32'):
+                    data = dsets['data'].view('float32')
+                    data[:] = dsets['data']
+
+                from scipy.sparse import csr_matrix
+                X = csr_matrix(
+                    (data, dsets['indices'], dsets['indptr']), shape=shape,
+                )
+                obs = dict(obs_names=dsets['barcodes'].astype(str))
+                var = dict(
                     var_names=dsets['name'].astype(str),
                     gene_ids=dsets['id'].astype(str),
                     feature_types=dsets['feature_type'].astype(str),
                     genome=dsets['genome'].astype(str),
-                ),
-            )
+                )
+            if dask:
+                adata = AnnDataDask(X, obs, var)
+            else:
+                adata = AnnData(X, obs, var)
             logg.info('', time=start)
             return adata
         except KeyError:
@@ -461,9 +480,7 @@ def read_10x_mtx(
     if genefile_exists or not gex_only:
         return adata
     else:
-        gex_rows = list(
-            map(lambda x: x == 'Gene Expression', adata.var['feature_types'])
-        )
+        gex_rows = adata.var['feature_types'].map(lambda x: x == 'Gene Expression')
         return adata[:, gex_rows].copy()
 
 
@@ -672,10 +689,10 @@ def _read(
     # read hdf5 files
     if ext in {'h5', 'h5ad'}:
         if sheet is None:
-            return read_h5ad(filename, backed=backed)
+            return read_h5ad(filename, backed=backed, **kwargs)
         else:
             logg.debug(f'reading sheet {sheet} from file {filename}')
-            return read_hdf(filename, sheet)
+            return read_hdf(filename, sheet, **kwargs)
     # read other file types
     path_cache = settings.cachedir / _slugify(filename).replace(
         '.' + ext, '.h5ad'
