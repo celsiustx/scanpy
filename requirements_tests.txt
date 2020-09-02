@@ -1,5 +1,4 @@
-igraph==0.1.11
-python-igraph==0.8.2
+jgraph==0.2.1
 leidenalg==0.8.0
 louvain==0.6.0
 umap-learn==0.3.10
