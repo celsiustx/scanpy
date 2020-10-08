@@ -32,7 +32,7 @@ setup(
         if not (l.startswith("-e") or l.startswith("#"))
     ],
     extras_require=dict(
-        louvain=['python-igraph', 'louvain>=0.6'],
+        louvain=['python-igraph', 'louvain==0.6.1'],
         leiden=['python-igraph', 'leidenalg'],
         bbknn=['bbknn'],
         rapids=['cudf>=0.9', 'cuml>=0.9', 'cugraph>=0.9'],
