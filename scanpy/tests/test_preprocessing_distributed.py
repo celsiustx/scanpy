@@ -29,18 +29,12 @@ class TestPreprocessingDistributed:
     @pytest.fixture(params=["direct", "dask"])
     def adata_dist(self, request):
         # regular anndata except for X, which we replace on the next line
-        a = ad.read_zarr(input_file)
-        input_file_X = input_file + "/X"
+        a = ad.read_zarr(input_file, dask=(request.param=='dask'))
         if request.param == "direct":
+            input_file_X = input_file + "/X"
             import zappy.direct
-
             a.X = zappy.direct.from_zarr(input_file_X)
-            yield a
-        elif request.param == "dask":
-            import dask.array as da
-
-            a.X = da.from_zarr(input_file_X)
-            yield a
+        yield a
 
     def test_log1p(self, adata, adata_dist):
         log1p(adata_dist)
